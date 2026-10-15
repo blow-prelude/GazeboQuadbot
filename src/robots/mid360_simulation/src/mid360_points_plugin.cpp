@@ -152,6 +152,20 @@ void Mid360PointsPlugin::Load(sensors::SensorPtr _parent, sdf::ElementPtr sdf)
     RCLCPP_INFO(rclcpp::get_logger("Mid360Plugin"),
                 "采样数: %ld, 降采样: %ld", samplesStep_, downSample_);
 
+    // 将 CSV 时间列（采样序号，1..maxPointSize_）归一化为点在单帧扫描内的相对时间 [s]：
+    // 单帧采样 samplesStep_/downSample_ 个点，采样率 = 帧点数 × 传感器更新率。
+    // 前提：maxPointSize_ 能被 samplesStep_ 整除（帧窗口与 CSV 周期对齐），
+    // 下游 LIO（如 Elevator-LIO）依赖该字段做点云去畸变。
+    const double frame_points = static_cast<double>(samplesStep_ / downSample_);
+    const double pts_per_sec = frame_points * raySensor_->UpdateRate();
+    if (pts_per_sec > 0.0 && samplesStep_ > 0)
+    {
+        for (auto& info : scanInfos_)
+        {
+            info.time = std::fmod(info.time, static_cast<double>(samplesStep_)) / pts_per_sec;
+        }
+    }
+
     // 初始化射线形状
     rayShape_->RayShapes().reserve(samplesStep_ / downSample_);
     rayShape_->Load(sdfPtr_);
@@ -264,8 +278,9 @@ void Mid360PointsPlugin::OnNewLaserScans()
         float y = static_cast<float>(point.Y());
         float z = static_cast<float>(point.Z());
         float intensity = 100.0f;
-        // 每个点的时间戳 = 仿真时间 + 点在扫描中的相对时间
-        double timestamp = sim_time_sec + rotate_info.time;
+        // 每个点的时间戳 = 点在单帧扫描内的相对时间 [s]（Load 阶段已归一化），
+        // 配合 header.stamp 供下游 LIO 做点云去畸变
+        double timestamp = rotate_info.time;
 
         size_t offset = point_data.size();
         point_data.resize(offset + cloud2.point_step);
