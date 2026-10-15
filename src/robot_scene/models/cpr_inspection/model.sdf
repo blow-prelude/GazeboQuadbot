@@ -1,0 +1,27 @@
+<?xml version="1.0" ?>
+<sdf version="1.5">
+  <model name="cpr_inspection">
+    <static>true</static>
+    <link name="inspection_world_link">
+
+      <collision name="inspection_world_link_collision">
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://cpr_inspection/meshes/inspection_world.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+
+      <visual name="inspection_world_link_visual">
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://cpr_inspection/meshes/inspection_world.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+
+    </link>
+  </model>
+</sdf>

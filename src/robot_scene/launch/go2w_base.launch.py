@@ -1,5 +1,6 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, ExecuteProcess, TimerAction
+from launch.actions import IncludeLaunchDescription, ExecuteProcess, RegisterEventHandler
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
@@ -20,6 +21,13 @@ def generate_launch_description():
         default_value="default.world",
         description="World file name to load from the worlds directory"
     )
+
+    declare_init_x = DeclareLaunchArgument("world_init_x", default_value="0.0")
+    declare_init_y = DeclareLaunchArgument("world_init_y", default_value="0.0")
+    # Spawn above the terrain and let the robot drop and settle on its own.
+    # Use world_init_z = ground level + 0.317 (base_link to wheel contact) if
+    # a drop-free start in another world is ever needed.
+    declare_init_z = DeclareLaunchArgument("world_init_z", default_value="0.5")
 
     # （可选）阻止Gazebo从互联网自动下载模型（加速本地加载）
     os.environ['GAZEBO_MODEL_DATABASE_URI'] = ""    
@@ -86,9 +94,9 @@ def generate_launch_description():
         arguments=[
             "-entity", "go2w",
             "-topic", "robot_description",
-            "-x", "0",
-            "-y", "0",
-            "-z", "0.5",
+            "-x", LaunchConfiguration("world_init_x"),
+            "-y", LaunchConfiguration("world_init_y"),
+            "-z", LaunchConfiguration("world_init_z"),
         ],
         output="screen",
         parameters=[{"use_sim_time": True}]
@@ -132,15 +140,26 @@ def generate_launch_description():
         mesa_adapter,
         gazebo_gpu_rendering,
         declare_world,
+        declare_init_x,
+        declare_init_y,
+        declare_init_z,
         gzserver_launch,
         gzclient_launch,
         robot_state_publisher_node,
-        TimerAction(
-            period=20.0,
-            actions=[spawn_entity_node,
+        # Spawn as soon as gzserver's /spawn_entity service is up; spawn_entity.py
+        # already waits for the service and for robot_description, so no fixed delay
+        # is needed. The controllers then wait for the controller_manager that
+        # gazebo_ros2_control brings up with the spawned model.
+        spawn_entity_node,
+        RegisterEventHandler(
+            OnProcessExit(
+                target_action=spawn_entity_node,
+                on_exit=[
                     joint_state_broadcaster_spawner,
                     joint_group_effort_controller_spawner,
-                    joint_group_velocity_controller_spawner,]
+                    joint_group_velocity_controller_spawner,
+                ],
+            )
         ),
         # ros2_control_node,
     ])
